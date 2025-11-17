@@ -1,15 +1,16 @@
 <template>
-  <div class="h-screen">
+  <div class="h-screen overflow-hidden">
     <div id="videos" class="grid grid-cols-1 h-screen overflow-hidden relative">
-        <video ref="localVideo" :class="{
-            'bg-black h-[230px] rounded-lg object-cover absolute top-5 left-5': userJoined,
-            'bg-black w-full h-full object-cover': !userJoined
+        <video ref="localVideo" class="-scale-x-[1] object-cover" :class="{
+            'bg-black h-[155px] lg:h-[230px] rounded-md absolute top-5 left-5': userJoined,
+            'bg-black w-full h-full': !userJoined
         }" autoplay muted playsinline></video>
         <video v-show="userJoined" ref="remoteVideo" class="bg-black w-full h-full object-cover"  autoplay></video>
     </div>
     <div class="flex items-center gap-5 absolute bottom-8 left-1/2 transform -translate-x-1/2">
         <UButton @click="toggleMic" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="info" size="xl" :icon="micIcon"></UButton>
         <UButton @click="toggleCamera" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="info" size="xl" :icon="cameraIcon"></UButton>
+        <UButton @click="shareScreen" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="info" size="xl" :icon="screenIcon"></UButton>
         <UButton @click="copyLink" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="info" size="xl" icon="lucide:circle-plus"></UButton>
         <NuxtLink to="/">
             <UButton @click="leaveChannel" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="error" size="xl" icon="lucide:phone"></UButton>
@@ -24,17 +25,16 @@ let remoteStream: MediaStream;
 let peerConnection: RTCPeerConnection;
 let localVideo = ref<HTMLVideoElement|null>(null);
 let remoteVideo = ref<HTMLVideoElement|null>(null);
-let client;
-let channel;
-let token = null;
 const toast = useToast()
 let route = useRoute()
 let userJoined = ref(false)
 const ws = ref<any>({})
 const cameraOff = ref(false)
 const micOff = ref(false)
+const screenSharing = ref(false)
 const constraints = {
     video: {
+        facingMode: "user",
         width: {
             min: 640,
             ideal: 1920,
@@ -49,12 +49,41 @@ const constraints = {
     audio: true
 }
 
+let shareScreen = async () => {
+    try {
+        if (screenSharing.value) {
+            screenSharing.value = false
+            localStream.getTracks().forEach((track) => {
+                track.stop()
+            })
+            localStream = await navigator.mediaDevices.getUserMedia(constraints)
+            localVideo.value!.srcObject = localStream
+            let videoTrack = localStream.getVideoTracks()[0]
+            let sender = peerConnection.getSenders().find(s => s.track?.kind === videoTrack.kind)
+            sender?.replaceTrack(videoTrack)
+            return
+        }
+        screenSharing.value = true
+        localStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: false})
+        localVideo.value!.srcObject = localStream
+        let videoTrack = localStream.getVideoTracks()[0]
+        let sender = peerConnection.getSenders().find(s => s.track?.kind === videoTrack.kind)
+        sender?.replaceTrack(videoTrack)
+    } catch (err) {
+        console.error("Error: " + err);
+    }
+}
+
 let cameraIcon = computed(() => {
     return cameraOff.value ? 'lucide:camera-off' : 'lucide:camera'
 })
 
 let micIcon = computed(() => {
     return micOff.value ? 'lucide:mic-off' : 'lucide:mic'
+})
+
+let screenIcon = computed(() => {
+    return screenSharing.value ? 'lucide:monitor-off' : 'lucide:monitor'
 })
 
 let createPeerConnection = async (send: (data: string | Blob | ArrayBuffer, useBuffer?: boolean) => boolean) => {
@@ -176,7 +205,7 @@ let copyLink = async () => {
 
 onMounted(async () => {
     window.addEventListener("beforeunload", leaveChannel);
-    const {status, data, send, open, close} = useWebSocket(`ws://${location.host}/api/websocket`, {
+    const {status, data, send, open, close} = useWebSocket(`wss://${location.host}/_ws`, {
         onMessage(ws, event) {
             let message = JSON.parse(event.data)
             if (message.type === 'joined') {
