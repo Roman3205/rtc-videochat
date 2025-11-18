@@ -35,10 +35,6 @@ const screenSharing = ref(false)
 
 let constraints: any;
 
-let isMobile = () => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-}
-
 let shareScreen = async () => {
     try {
         if (screenSharing.value) {
@@ -243,17 +239,11 @@ let copyLink = async () => {
 
 onMounted(async () => {
     constraints = {
-    video: {
-            width: { ideal: 640, max: 720 },
-            height: { ideal: 360, max: 480 },
-            frameRate: { ideal: 24, max: 30 }
-        },
-        // : {
-        //     width: { ideal: 1920, max: 1920 },
-        //     height: { ideal: 1080, max: 1080 },
-        //     frameRate: { ideal: 40, max: 60 }
-        // },
-    audio: true
+      video: {
+        width: { ideal: 1920, max: 1920 },
+        height: { ideal: 1080, max: 1080 }
+      },
+      audio: true
     };
     window.addEventListener("beforeunload", leaveChannel);
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
