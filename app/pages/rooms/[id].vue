@@ -33,13 +33,11 @@ const cameraOff = ref(false)
 const micOff = ref(false)
 const screenSharing = ref(false)
 
-let constraints = {
-    video: {
-        width: { ideal: 1920, max: 1920 },
-        height: { ideal: 1080, max: 1080 }
-    },
-    audio: true
-};
+let constraints: any;
+
+let isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
 
 let shareScreen = async () => {
     try {
@@ -244,6 +242,20 @@ let copyLink = async () => {
 }
 
 onMounted(async () => {
+    constraints = {
+    video: isMobile()
+        ? {
+            width: { ideal: 640, max: 720 },
+            height: { ideal: 360, max: 480 },
+            frameRate: { ideal: 24, max: 30 }
+        }
+        : {
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30, max: 60 }
+        },
+    audio: true
+    };
     window.addEventListener("beforeunload", leaveChannel);
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
     const {status, data, send, open, close} = useWebSocket(`${protocol}://${location.host}/_ws`, {
