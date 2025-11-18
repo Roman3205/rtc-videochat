@@ -4,7 +4,7 @@
         <video ref="localVideo" class="-scale-x-[1] object-cover" :class="{
             'bg-black h-[155px] lg:h-[230px] rounded-md absolute top-5 left-5': userJoined,
             'bg-black w-full h-full': !userJoined
-        }" autoplay muted playsinline></video>
+        }" muted autoplay playsinline></video>
         <video v-show="userJoined" ref="remoteVideo" class="bg-black w-full h-full object-cover"  autoplay></video>
     </div>
     <div class="flex items-center gap-5 absolute bottom-8 left-1/2 transform -translate-x-1/2">
@@ -12,9 +12,7 @@
         <UButton @click="toggleCamera" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="info" size="xl" :icon="cameraIcon"></UButton>
         <UButton @click="shareScreen" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="info" size="xl" :icon="screenIcon"></UButton>
         <UButton @click="copyLink" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="info" size="xl" icon="lucide:circle-plus"></UButton>
-        <NuxtLink to="/">
-            <UButton @click="leaveChannel" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="error" size="xl" icon="lucide:phone"></UButton>
-        </NuxtLink>
+        <UButton @click="leaveChannel" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="error" size="xl" icon="lucide:phone"></UButton>
     </div>
   </div>
 </template>
@@ -59,16 +57,41 @@ let shareScreen = async () => {
             localStream = await navigator.mediaDevices.getUserMedia(constraints)
             localVideo.value!.srcObject = localStream
             let videoTrack = localStream.getVideoTracks()[0]
-            let sender = peerConnection.getSenders().find(s => s.track?.kind === videoTrack.kind)
+            let sender = peerConnection?.getSenders().find(s => s.track?.kind === videoTrack.kind)
             sender?.replaceTrack(videoTrack)
             return
         }
+        
         screenSharing.value = true
+        localStream.getTracks().forEach((track) => {
+            track.stop()
+        })
         localStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: false})
+        let mic = await navigator.mediaDevices.getUserMedia({audio: true})
+        const audioContext = new AudioContext();
+        const destination = audioContext.createMediaStreamDestination();
+
+        const micSource = audioContext.createMediaStreamSource(mic);
+        micSource.connect(destination);
+
+        localStream = new MediaStream([
+        ...localStream.getVideoTracks(),
+        ...destination.stream.getAudioTracks()
+        ]);
+
         localVideo.value!.srcObject = localStream
         let videoTrack = localStream.getVideoTracks()[0]
-        let sender = peerConnection.getSenders().find(s => s.track?.kind === videoTrack.kind)
-        sender?.replaceTrack(videoTrack)
+        let audioTrack = localStream.getAudioTracks()[0]
+
+        let senderVideo = peerConnection?.getSenders().find(s => s.track?.kind === videoTrack.kind)
+        let senderAudio = peerConnection?.getSenders().find(s => s.track?.kind === audioTrack.kind)
+        senderVideo?.replaceTrack(videoTrack);
+        senderAudio?.replaceTrack(audioTrack);
+
+        videoTrack.onended = () => {
+            if (!screenSharing.value) return
+            shareScreen()
+        }
     } catch (err) {
         console.error("Error: " + err);
     }
@@ -162,16 +185,25 @@ let addAnswer = async (answer) => {
     }
 }
 
-let leaveChannel = () => {
+let leaveChannel = async () => {
     if (ws.value) {
         ws.value.send(JSON.stringify({type: 'leave'}))
     }
 
     if (!userJoined.value) {
+        if (screenSharing.value) {
+            screenSharing.value = false
+        }
         localStream.getTracks().forEach((track) => {
             track.stop()
         })
+
+        localVideo.value!.srcObject = null
     }
+
+    await navigateTo('/')
+    // window.location.reload()
+    return
 }
 
 let toggleCamera = async () => {
@@ -205,7 +237,8 @@ let copyLink = async () => {
 
 onMounted(async () => {
     window.addEventListener("beforeunload", leaveChannel);
-    const {status, data, send, open, close} = useWebSocket(`wss://${location.host}/_ws`, {
+    const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
+    const {status, data, send, open, close} = useWebSocket(`${protocol}://${location.host}/_ws`, {
         onMessage(ws, event) {
             let message = JSON.parse(event.data)
             if (message.type === 'joined') {

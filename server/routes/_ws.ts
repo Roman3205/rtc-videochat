@@ -42,4 +42,11 @@ export default defineWebSocketHandler({
             return
         }
     },
+    upgrade(req) {
+        return {
+            headers: {
+                "x-powered-by": "cross-ws",
+            },
+        };
+    },
 })
