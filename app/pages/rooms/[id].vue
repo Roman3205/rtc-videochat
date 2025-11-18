@@ -1,12 +1,12 @@
 <template>
   <div class="h-screen overflow-hidden">
-    <div id="videos" class="grid grid-cols-1 h-screen overflow-hidden relative">
+    <div id="videos" class="h-screen overflow-hidden bg-black flex justify-center items-center relative">
         <video ref="localVideo" class="object-cover" :class="{
             'bg-black h-[155px] lg:h-[230px] rounded-md absolute top-5 left-5': userJoined,
             'bg-black w-full h-full': !userJoined,
-            '-scale-x-[1]': !screenSharing
+            '-scale-x-[1]': !screenSharing,
         }" muted autoplay playsinline></video>
-        <video v-show="userJoined" ref="remoteVideo" class="bg-black w-full h-full object-cover"  autoplay></video>
+        <video v-show="userJoined" ref="remoteVideo" class="bg-black h-full w-full object-cover" autoplay></video>
     </div>
     <div class="flex items-center gap-5 absolute bottom-8 left-1/2 transform -translate-x-1/2">
         <UButton @click="toggleMic" class="rounded-full text-white cursor-pointer p-4 text-2xl" color="info" size="xl" :icon="micIcon"></UButton>
@@ -32,11 +32,6 @@ const ws = ref<any>({})
 const cameraOff = ref(false)
 const micOff = ref(false)
 const screenSharing = ref(false)
-
-const isMobile = () => {
-  return (/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i
-    .test(navigator.userAgent))
-}
 
 let constraints: any;
 
@@ -190,27 +185,24 @@ let addAnswer = async (answer) => {
 }
 
 let leaveChannel = async () => {
+    if (screenSharing.value) {
+        screenSharing.value = false
+    }
+
+    localStream.getTracks().forEach((track) => {
+        track.stop()
+    })
+
+    if (mic) {
+        mic.getTracks().forEach((track) => {
+            track.stop()
+        })
+    }
+
+    localVideo.value!.srcObject = null
     if (ws.value) {
         ws.value.send(JSON.stringify({type: 'leave'}))
     }
-
-    if (!userJoined.value) {
-        if (screenSharing.value) {
-            screenSharing.value = false
-        }
-        localStream.getTracks().forEach((track) => {
-            track.stop()
-        })
-
-        if (mic) {
-            mic.getTracks().forEach((track) => {
-                track.stop()
-            })
-        }
-
-        localVideo.value!.srcObject = null
-    }
-
     await navigateTo('/')
     // window.location.reload()
     return
@@ -246,15 +238,7 @@ let copyLink = async () => {
 }
 
 onMounted(async () => {
-    constraints = isMobile() ? {
-      video: {
-        facingMode: "user",
-        width: { ideal: 1280, max: 1280 },
-        height: { ideal: 720, max: 720 }
-      },
-      audio: true
-    }
-  : {
+    constraints = {
       video: {
         width: { ideal: 1920, max: 1920 },
         height: { ideal: 1080, max: 1080 }
