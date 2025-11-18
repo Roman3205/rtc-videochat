@@ -1,9 +1,10 @@
 <template>
   <div class="h-screen overflow-hidden">
     <div id="videos" class="grid grid-cols-1 h-screen overflow-hidden relative">
-        <video ref="localVideo" class="-scale-x-[1] object-cover" :class="{
+        <video ref="localVideo" class="object-cover" :class="{
             'bg-black h-[155px] lg:h-[230px] rounded-md absolute top-5 left-5': userJoined,
-            'bg-black w-full h-full': !userJoined
+            'bg-black w-full h-full': !userJoined,
+            '-scale-x-[1]': !screenSharing
         }" muted autoplay playsinline></video>
         <video v-show="userJoined" ref="remoteVideo" class="bg-black w-full h-full object-cover"  autoplay></video>
     </div>
@@ -21,6 +22,7 @@
 let localStream: MediaStream;
 let remoteStream: MediaStream;
 let peerConnection: RTCPeerConnection;
+let mic: MediaStream
 let localVideo = ref<HTMLVideoElement|null>(null);
 let remoteVideo = ref<HTMLVideoElement|null>(null);
 const toast = useToast()
@@ -30,22 +32,13 @@ const ws = ref<any>({})
 const cameraOff = ref(false)
 const micOff = ref(false)
 const screenSharing = ref(false)
-const constraints = {
-    video: {
-        facingMode: "user",
-        width: {
-            min: 640,
-            ideal: 1920,
-            max: 1920
-        },
-        height: {
-            min: 480,
-            ideal: 1080,
-            max: 1080
-        }
-    },
-    audio: true
+
+const isMobile = () => {
+  return (/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i
+    .test(navigator.userAgent))
 }
+
+let constraints: any;
 
 let shareScreen = async () => {
     try {
@@ -54,6 +47,11 @@ let shareScreen = async () => {
             localStream.getTracks().forEach((track) => {
                 track.stop()
             })
+            if (mic) {
+                mic.getTracks().forEach((track) => {
+                    track.stop()
+                })
+            }
             localStream = await navigator.mediaDevices.getUserMedia(constraints)
             localVideo.value!.srcObject = localStream
             let videoTrack = localStream.getVideoTracks()[0]
@@ -66,8 +64,14 @@ let shareScreen = async () => {
         localStream.getTracks().forEach((track) => {
             track.stop()
         })
+        if (mic) {
+            mic.getTracks().forEach((track) => {
+                track.stop()
+            })
+        }
+        
         localStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: false})
-        let mic = await navigator.mediaDevices.getUserMedia({audio: true})
+        mic = await navigator.mediaDevices.getUserMedia({audio: true})
         const audioContext = new AudioContext();
         const destination = audioContext.createMediaStreamDestination();
 
@@ -198,6 +202,12 @@ let leaveChannel = async () => {
             track.stop()
         })
 
+        if (mic) {
+            mic.getTracks().forEach((track) => {
+                track.stop()
+            })
+        }
+
         localVideo.value!.srcObject = null
     }
 
@@ -236,6 +246,21 @@ let copyLink = async () => {
 }
 
 onMounted(async () => {
+    constraints = isMobile() ? {
+      video: {
+        facingMode: "user",
+        width: { ideal: 1280, max: 1280 },
+        height: { ideal: 720, max: 720 }
+      },
+      audio: true
+    }
+  : {
+      video: {
+        width: { ideal: 1920, max: 1920 },
+        height: { ideal: 1080, max: 1080 }
+      },
+      audio: true
+    };
     window.addEventListener("beforeunload", leaveChannel);
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
     const {status, data, send, open, close} = useWebSocket(`${protocol}://${location.host}/_ws`, {
