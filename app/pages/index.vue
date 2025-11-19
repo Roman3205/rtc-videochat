@@ -3,7 +3,7 @@
     <h1 class="text-4xl font-bold mb-4 text-center">Welcome to the WebRTC Video Chat App</h1>
     <p class="text-lg mb-8 text-center">Connect with others through video chat using WebRTC technology.</p>
     <UFieldGroup size="xl">
-        <UInput v-model="roomId" color="neutral" variant="outline" placeholder="Enter room id" />
+        <UInput @keyup.enter="enterRoom" v-model="roomId" color="neutral" variant="outline" placeholder="Enter room id" />
 
         <UTooltip text="Enter the room">
         <UButton

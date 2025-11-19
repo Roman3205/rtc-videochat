@@ -54,12 +54,19 @@ let shareScreen = async () => {
             localStream = await navigator.mediaDevices.getUserMedia(constraints)
             localVideo.value!.srcObject = localStream
             let videoTrack = localStream.getVideoTracks()[0]
-            let sender = peerConnection?.getSenders().find(s => s.track?.kind === videoTrack.kind)
-            sender?.replaceTrack(videoTrack)
+            let audioTrack = localStream.getAudioTracks()[0]
+            if (micOff.value && audioTrack) {
+                audioTrack.enabled = false
+            }
+            let senderVideo = peerConnection?.getSenders().find(s => s.track?.kind === videoTrack.kind)
+            let senderAudio = peerConnection?.getSenders().find(s => s.track?.kind === audioTrack.kind)
+            senderVideo?.replaceTrack(videoTrack)
+            senderAudio?.replaceTrack(audioTrack)
             return
         }
         
         screenSharing.value = true
+
         localStream.getTracks().forEach((track) => {
             track.stop()
         })
@@ -71,6 +78,7 @@ let shareScreen = async () => {
         
         localStream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: false})
         mic = await navigator.mediaDevices.getUserMedia({audio: true})
+        
         const audioContext = new AudioContext();
         const destination = audioContext.createMediaStreamDestination();
 
@@ -85,6 +93,10 @@ let shareScreen = async () => {
         localVideo.value!.srcObject = localStream
         let videoTrack = localStream.getVideoTracks()[0]
         let audioTrack = localStream.getAudioTracks()[0]
+
+        if (micOff.value && audioTrack) {
+            audioTrack.enabled = false
+        }
 
         let senderVideo = peerConnection?.getSenders().find(s => s.track?.kind === videoTrack.kind)
         let senderAudio = peerConnection?.getSenders().find(s => s.track?.kind === audioTrack.kind)
@@ -115,7 +127,8 @@ let screenIcon = computed(() => {
 let createPeerConnection = async (send: (data: string | Blob | ArrayBuffer, useBuffer?: boolean) => boolean) => {
     peerConnection = new RTCPeerConnection({
         iceServers: [
-            {urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302']},
+            {urls: 'stun:stun1.l.google.com:19302'},
+            {urls: 'stun:stun2.l.google.com:19302'},
         ]
     })
     remoteStream = new MediaStream()
@@ -193,7 +206,7 @@ let leaveChannel = async () => {
         screenSharing.value = false
     }
 
-    localStream.getTracks().forEach((track) => {
+    localStream?.getTracks().forEach((track) => {
         track.stop()
     })
 
@@ -256,35 +269,39 @@ onMounted(async () => {
     window.addEventListener("beforeunload", leaveChannel);
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
     const {status, data, send, open, close} = useWebSocket(`${protocol}://${location.host}/_ws`, {
-        onMessage(ws, event) {
+        onDisconnected(ws, event) {
+            if (event.code === 4001) {
+                toast.add({title: event.reason, color: 'error'})
+                leaveChannel()
+                return navigateTo('/')
+            }
+        },
+        async onMessage(ws, event) {
             let message = JSON.parse(event.data)
-            if (message.type === 'joined') {
-                createOffer(send)
-                return
-            }
-
-            if (message.type === 'offer') {
-                createAnswer(send, message.data)
-                return
-            }
-
-            if (message.type === 'answer') {
-                addAnswer(message.data)
-                toast.add({title: `User ${message.data.id} joined the call.`, color: 'info'})
-                return
-            }
-
-            if (message.type === 'candidate') {
-                if (peerConnection) {
-                    peerConnection.addIceCandidate(message.data)
-                    return
-                }
-            }
-
-            if (message.type === 'leave') {
-                userLeft()
-                toast.add({title: `User ${message.data} left the call.`, color: 'info'})
-                return
+            switch (message.type) {
+                case 'channel':
+                    localStream = await navigator.mediaDevices.getUserMedia(constraints)
+                    localVideo.value!.srcObject = localStream;
+                    break;
+                case 'joined':
+                    createOffer(send);
+                    break;
+                case 'offer':
+                    createAnswer(send, message.data);
+                    break;
+                case 'answer':
+                    addAnswer(message.data);
+                    toast.add({title: `User ${message.data.id} joined the call.`, color: 'info'});
+                    break;
+                case 'candidate':
+                    if (peerConnection) {
+                        peerConnection.addIceCandidate(message.data);
+                        break;
+                    }
+                case 'leave':
+                    userLeft();
+                    toast.add({title: `User ${message.data} left the call.`, color: 'info'});
+                    break;
             }
         }
     })
@@ -292,9 +309,6 @@ onMounted(async () => {
     ws.value = {status, data, send, open, close}
 
     send(JSON.stringify({type: 'channel', data: route.params.id}))
-
-    localStream = await navigator.mediaDevices.getUserMedia(constraints)
-    localVideo.value!.srcObject = localStream
 })
 
 onBeforeUnmount(() => {
